@@ -3,6 +3,8 @@ from tkinter import ttk, filedialog, messagebox
 import threading
 import yt_dlp
 import os
+import time
+from datetime import datetime, timedelta
 
 class BandcampDownloader:
     def __init__(self, root):
@@ -26,16 +28,23 @@ class BandcampDownloader:
         format_combo = ttk.Combobox(root, textvariable=self.format_var, values=["mp3", "flac", "ogg", "wav"], state="readonly")
         format_combo.grid(row=2, column=1, padx=5, pady=5, sticky="w")
 
+        # Info Label
+        self.info_var = tk.StringVar(value="Waiting...")
+        ttk.Label(root, textvariable=self.info_var).grid(row=3, column=0, columnspan=3, padx=5, pady=5)
+
         # Download Button
         self.download_btn = ttk.Button(root, text="Download Album", command=self.start_download_thread)
-        self.download_btn.grid(row=3, column=1, padx=5, pady=10)
+        self.download_btn.grid(row=4, column=1, padx=5, pady=10)
 
         # Progress bar
         self.progress = ttk.Progressbar(root, mode='indeterminate')
-        self.progress.grid(row=4, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
+        self.progress.grid(row=5, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
 
         # Configure grid
         root.columnconfigure(1, weight=1)
+
+        self.start_time = None
+        self.total_bytes = None
 
     def browse_path(self):
         directory = filedialog.askdirectory()
@@ -54,6 +63,8 @@ class BandcampDownloader:
             messagebox.showerror("Error", "Please select a download directory.")
             return
 
+        self.start_time = datetime.now()
+        self.info_var.set("Starting download...")
         self.download_btn['state'] = 'disabled'
         self.progress.start()
 
@@ -76,10 +87,28 @@ class BandcampDownloader:
         finally:
             self.progress.stop()
             self.download_btn['state'] = 'normal'
+            self.info_var.set("Done.")
 
     def progress_hook(self, d):
         if d['status'] == 'downloading':
-            print(f"Downloading: {d['_percent_str']} of {d['_total_bytes_str']}")
+            percent = d.get('_percent_str', '').strip()
+            downloaded = d.get('downloaded_bytes', 0)
+            total = d.get('total_bytes', None)
+
+            if total:
+                if not self.total_bytes:
+                    self.total_bytes = total
+
+                elapsed = (datetime.now() - self.start_time).total_seconds()
+                speed = downloaded / max(elapsed, 0.1)
+                remaining = total - downloaded
+                eta_seconds = remaining / max(speed, 1)
+                eta = str(timedelta(seconds=int(eta_seconds)))
+            else:
+                eta = "--:--"
+
+            title = d.get('info_dict', {}).get('title', 'Unknown')
+            self.info_var.set(f"Downloading: {title} / {percent}  |  ETA: {eta}")
 
     def start_download_thread(self):
         thread = threading.Thread(target=self.download_album)
